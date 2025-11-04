@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Leituras IoT — pública</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    h1 { margin-bottom: 8px; }
+    .bar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap: wrap; }
+    input, select, button { padding:8px; }
+    table { border-collapse: collapse; width:100%; margin-top:8px; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    th { background:#222; color:#fff; position: sticky; top: 0; }
+    .muted { color:#666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Leituras IoT</h1>
+  <div class="muted">Fonte: Supabase REST (RLS + anon key)</div>
+
+  <div class="bar">
+    <label>Dispositivo:</label>
+    <input id="device" placeholder="ex.: placa1" value="placa1">
+    <label>Limite:</label>
+    <select id="limit">
+      <option>50</option><option selected>200</option><option>500</option><option>1000</option>
+    </select>
+    <button id="refresh">Atualizar</button>
+    <button id="download">Baixar CSV</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Device</th>
+        <th>TS (local do navegador)</th>
+        <th>Temp (°C)</th>
+        <th>Umidade (%)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+/*** >>> SUBSTITUA AQUI <<< ***/
+const SUPA_URL = 'https://hafzqoedrlllilclmooo.supabase.co';     // ex.: https://hafzqoedrlllliclm0oo.supabase.co
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZnpxb2VkcmxsbGlsY2xtb29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNTgxNDYsImV4cCI6MjA3NzczNDE0Nn0.h00s3ujCRrHivvAiDBFhte5ISGitHd0JE5lDaMuo50E';                        // anon key
+
+// Endpoint: usamos a VIEW 'readings_public' (já com tz de SP em ts_local).
+const BASE = SUPA_URL + '/rest/v1/readings_public';
+
+const statusEl = document.getElementById('status');
+const deviceEl = document.getElementById('device');
+const limitEl  = document.getElementById('limit');
+
+function setStatus(msg){ statusEl.textContent = msg; }
+
+function asCSV(rows){
+  if(!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const esc = v => (v==null?'':String(v).replaceAll('"','""'));
+  const head = cols.map(c=>`"${esc(c)}"`).join(',');
+  const body = rows.map(r => cols.map(c=>`"${esc(r[c])}"`).join(',')).join('\n');
+  return head + '\n' + body;
+}
+
+async function loadData(){
+  setStatus('Carregando...');
+  const params = new URLSearchParams();
+  params.set('select','id,device_id,ts_local,temperature_c,humidity_pct');
+
+  const device = deviceEl.value.trim();
+  if(device) params.set('device_id','eq.'+device); // filtro opcional
+
+  params.set('order','ts_local.desc');
+  params.set('limit', limitEl.value);
+
+  const url = BASE + '?' + params.toString();
+  const res = await fetch(url, {
+    headers: {
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + ANON_KEY',
+      'Accept': 'application/json'
+    }
+  });
+
+  if(!res.ok){
+    setStatus('Erro: ' + res.status);
+    alert('Erro ' + res.status + ' ao buscar dados');
+    return;
+  }
+
+  const rows = await res.json();
+  const tbody = document.querySelector('#tbl tbody');
+  tbody.innerHTML = '';
+
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    const when = r.ts_local ? new Date(r.ts_local).toLocaleString() : '';
+    tr.innerHTML = `
+      <td>${r.id ?? ''}</td>
+      <td>${r.device_id ?? ''}</td>
+      <td>${when}</td>
+      <td>${r.temperature_c ?? ''}</td>
+      <td>${r.humidity_pct ?? ''}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  setStatus(`Carregado: ${rows.length} registro(s).`);
+  return rows;
+}
+
+document.getElementById('refresh').addEventListener('click', loadData);
+document.getElementById('download').addEventListener('click', async ()=>{
+  const rows = await loadData();
+  if(!rows) return;
+  const csv = asCSV(rows);
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'leituras.csv';
+  a.click();
+});
+
+loadData();
+</script>
+</body>
+</html>
