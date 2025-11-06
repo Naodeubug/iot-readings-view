@@ -5,7 +5,7 @@
   <title>Leituras IoT — pública</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Chart.js (gráficos) -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
@@ -26,18 +26,24 @@
     .tabs button { padding:8px 12px; border:1px solid #ddd; background:#f7f7f7; border-radius:6px; cursor:pointer; }
     .tabs button.active { background:#222; color:#fff; border-color:#222; }
 
-    /* Gráficos (empilhados e responsivos) */
+    /* painéis simples */
+    .panel { display:grid; grid-template-columns: 1fr; gap:12px; margin-top:12px; }
+    .card { border:1px solid #eee; border-radius:8px; padding:14px; background:#fafafa; }
+    .card h3 { margin:0 0 8px 0; font-size:16px; }
+    .big { font-size:28px; font-weight:600; }
+
+    /* gráficos empilhados e responsivos */
     .chartbox { border:1px solid #eee; border-radius:8px; padding:var(--space); background:#fafafa; margin:18px 0; }
     .chartbox h3 { margin:0 0 8px 0; font-size:16px; }
     .canvaswrap { position:relative; width:100%; height:320px; }
     canvas { width:100% !important; height:100% !important; display:block; }
 
-    /* Tabela */
+    /* tabela */
     table { width:100%; border-collapse:collapse; margin-top:8px; }
     th, td { border:1px solid #ddd; padding:8px; text-align:left; }
     th { background:#222; color:#fff; position:sticky; top:0; z-index:1; }
 
-    /* Esconde seção inativa */
+    /* esconder seção inativa */
     .hidden { display:none; }
   </style>
 </head>
@@ -48,21 +54,10 @@
   </header>
 
   <main class="wrap">
-    <!-- Controles gerais -->
+    <!-- Controles -->
     <div class="bar">
       <label for="device">Dispositivo:</label>
       <input id="device" placeholder="ex.: placa1" value="placa1" />
-      
-      <!-- Limite para a TABELA -->
-      <label for="tableLimit">Tabela:</label>
-      <select id="tableLimit">
-        <option value="100">100</option>
-        <option value="500">500</option>
-        <option value="1000" selected>1000</option>
-        <option value="all">Todos</option>
-      </select>
-
-      <!-- Faixa para os GRÁFICOS -->
       <label for="graphRange">Gráfico (últimos):</label>
       <select id="graphRange">
         <option value="20" selected>20</option>
@@ -70,20 +65,38 @@
         <option value="60">60</option>
         <option value="120">120</option>
       </select>
-
       <button id="refresh">Atualizar</button>
       <button id="download">Baixar CSV</button>
       <span id="status" class="muted"></span>
     </div>
 
-    <!-- Abas de visualização -->
+    <!-- Abas -->
     <div class="tabs">
-      <button id="tabGraphs" class="active">Ver gráficos</button>
+      <button id="tabPanel"  class="active">Ver painel</button>
+      <button id="tabGraphs">Ver gráficos</button>
       <button id="tabTable">Ver tabela</button>
     </div>
 
-    <!-- Seção: Gráficos -->
-    <section id="view-graphs">
+    <!-- Painel (última leitura) -->
+    <section id="view-panel">
+      <div class="panel">
+        <div class="card">
+          <h3>Última leitura</h3>
+          <div id="p-time" class="muted">—</div>
+        </div>
+        <div class="card">
+          <h3>Temperatura (°C)</h3>
+          <div id="p-temp" class="big">—</div>
+        </div>
+        <div class="card">
+          <h3>Umidade (%)</h3>
+          <div id="p-hum" class="big">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gráficos -->
+    <section id="view-graphs" class="hidden">
       <div class="chartbox">
         <h3>Temperatura (°C)</h3>
         <div class="canvaswrap"><canvas id="tempChart"></canvas></div>
@@ -94,7 +107,7 @@
       </div>
     </section>
 
-    <!-- Seção: Tabela -->
+    <!-- Tabela -->
     <section id="view-table" class="hidden">
       <table id="tbl">
         <thead>
@@ -112,30 +125,36 @@
   </main>
 
 <script>
+/*** CONFIG ***/
 const SUPA_URL = 'https://hafzqoedrlllilclmooo.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZnpxb2VkcmxsbGlsY2xtb29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNTgxNDYsImV4cCI6MjA3NzczNDE0Nn0.h00s3ujCRrHivvAiDBFhte5ISGitHd0JE5lDaMuo50E';
-
-/*** Configurações ***/
-const VIEW_NAME = 'readings_public';          // view com ts_local ajustado
+const VIEW_NAME = 'readings_public';
 const BASE = `${SUPA_URL}/rest/v1/${VIEW_NAME}`;
+const TABLE_LIMIT_HARD = 20000; // “Todos”: traz muito; ajuste se quiser
 
 /*** DOM ***/
-const statusEl     = document.getElementById('status');
-const deviceEl     = document.getElementById('device');
-const tableLimitEl = document.getElementById('tableLimit');
-const graphRangeEl = document.getElementById('graphRange');
-const tbody        = document.querySelector('#tbl tbody');
+const statusEl   = document.getElementById('status');
+const deviceEl   = document.getElementById('device');
+const graphRange = document.getElementById('graphRange');
+const tbody      = document.querySelector('#tbl tbody');
 
+const tabPanelBtn  = document.getElementById('tabPanel');
 const tabGraphsBtn = document.getElementById('tabGraphs');
 const tabTableBtn  = document.getElementById('tabTable');
-const graphsView   = document.getElementById('view-graphs');
-const tableView    = document.getElementById('view-table');
+
+const panelView  = document.getElementById('view-panel');
+const graphsView = document.getElementById('view-graphs');
+const tableView  = document.getElementById('view-table');
+
+const pTime = document.getElementById('p-time');
+const pTemp = document.getElementById('p-temp');
+const pHum  = document.getElementById('p-hum');
 
 /*** Utils ***/
-function setStatus(msg){ statusEl.textContent = msg; }
-function escCSV(v){ return v==null ? '' : String(v).replaceAll('"','""'); }
+const setStatus = msg => statusEl.textContent = msg;
+const escCSV = v => (v==null ? '' : String(v).replaceAll('"','""'));
 function asCSV(rows){
-  if(!rows.length) return '';
+  if(!rows || !rows.length) return '';
   const cols = Object.keys(rows[0]);
   const head = cols.map(c=>`"${escCSV(c)}"`).join(',');
   const body = rows.map(r => cols.map(c=>`"${escCSV(r[c])}"`).join(',')).join('\n');
@@ -145,21 +164,23 @@ function asCSV(rows){
 /*** Charts ***/
 let tempChart, humChart;
 
-function makeLineChart(ctx, color, labels, series, ylabel){
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);  // menos memória
+function makeLineChart(ctx, color, labels, series){
+  // garante números
+  const dataNum = series.map(v => (v==null ? null : Number(v)));
 
   return new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: labels,
       datasets: [{
-        label: ylabel,
-        data: series,
+        data: dataNum,
         borderColor: color,
-        backgroundColor: 'transparent',
+        backgroundColor: color,
         borderWidth: 2,
-        pointRadius: 0,
+        pointRadius: 2,
+        pointHoverRadius: 3,
         tension: 0.25,
+        fill: false,
         spanGaps: true
       }]
     },
@@ -167,11 +188,10 @@ function makeLineChart(ctx, color, labels, series, ylabel){
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      parsing: false,
-      normalized: true,
-      devicePixelRatio: dpr,
-      plugins: { legend: { display:false } },
+      parsing: true,          // usa labels como X e números como Y
+      // normalized: false,    // <- **NÃO** normalize (isso que travava o eixo 0–1)
       interaction: { mode:'nearest', intersect:false },
+      plugins: { legend: { display:false } },
       scales: {
         x: { ticks: { maxRotation:0, autoSkip:true } },
         y: { beginAtZero:false }
@@ -181,32 +201,41 @@ function makeLineChart(ctx, color, labels, series, ylabel){
 }
 
 function updateCharts(rows){
-  // rows chegam do mais recente para o mais antigo ⇒ vamos inverter para desenhar
+  if(!rows || !rows.length) {
+    if (tempChart) tempChart.destroy();
+    if (humChart)  humChart.destroy();
+    tempChart = humChart = null;
+    return;
+  }
+
+  // invertido para desenhar na ordem cronológica
   const inv = [...rows].reverse();
 
   const labels = inv.map(r => r.ts_local ? new Date(r.ts_local).toLocaleString() : '');
-  const temps  = inv.map(r => r.temperature_c);
-  const hums   = inv.map(r => r.humidity_pct);
+  const temps  = inv.map(r => (r.temperature_c==null ? null : Number(r.temperature_c)));
+  const hums   = inv.map(r => (r.humidity_pct==null   ? null : Number(r.humidity_pct)));
 
-  // faixa pedida p/ gráfico
-  const keep = Math.max(1, Number(graphRangeEl.value) || 20);
-  const l = Math.max(0, labels.length - keep);
-  const L = labels.slice(l), T = temps.slice(l), H = hums.slice(l);
+  const keep = Math.max(1, Number(graphRange.value) || 20);
+  const start = Math.max(0, labels.length - keep);
+
+  const L = labels.slice(start);
+  const T = temps.slice(start);
+  const H = hums.slice(start);
 
   const ctxT = document.getElementById('tempChart').getContext('2d');
   const ctxH = document.getElementById('humChart').getContext('2d');
 
-  if (!tempChart) tempChart = makeLineChart(ctxT, '#2563eb', L, T, 'Temperatura (°C)');
+  if (!tempChart) tempChart = makeLineChart(ctxT, '#2563eb', L, T);
   else { tempChart.data.labels = L; tempChart.data.datasets[0].data = T; tempChart.update('none'); }
 
-  if (!humChart) humChart = makeLineChart(ctxH, '#059669', L, H, 'Umidade (%)');
+  if (!humChart) humChart = makeLineChart(ctxH, '#059669', L, H);
   else { humChart.data.labels = L; humChart.data.datasets[0].data = H; humChart.update('none'); }
 }
 
 /*** Tabela ***/
 function renderTable(rows){
   tbody.innerHTML = '';
-  rows.forEach(r => {
+  (rows || []).forEach(r => {
     const tr = document.createElement('tr');
     const when = r.ts_local ? new Date(r.ts_local).toLocaleString() : '';
     tr.innerHTML = `
@@ -219,7 +248,24 @@ function renderTable(rows){
   });
 }
 
-/*** Data loader (busca uma vez e atualiza gráficos/tabela de acordo com os selects) ***/
+/*** Painel ***/
+function renderPanel(rows){
+  if(!rows || !rows.length){
+    pTime.textContent = '—';
+    pTemp.textContent = '—';
+    pHum.textContent  = '—';
+    return;
+  }
+  // rows chegam mais_recente → mais_antigo
+  const r0 = rows[0];
+  pTime.textContent = r0.ts_local ? new Date(r0.ts_local).toLocaleString() : '—';
+  pTemp.textContent = (r0.temperature_c ?? '—');
+  pHum.textContent  = (r0.humidity_pct ?? '—');
+}
+
+/*** Data loader ***/
+let lastRows = [];
+
 async function loadData(){
   try{
     setStatus('Carregando...');
@@ -229,17 +275,10 @@ async function loadData(){
     params.set('order','ts_local.desc');
 
     const dev = deviceEl.value.trim();
-    if (dev) params.set('device_id', 'eq.' + dev);
+    if (dev) params.set('device_id','eq.' + dev);
 
-    // Qual limite pedir para a API?
-    // - se tabela = "Todos", não envia limit (deixa o default do PostgREST)
-    // - senão, usa o maior entre limite da tabela e da faixa do gráfico
-    const tableLim = tableLimitEl.value;
-    const gKeep    = Number(graphRangeEl.value) || 20;
-    if (tableLim !== 'all') {
-      const lim = Math.max(Number(tableLim) || 1000, gKeep);
-      params.set('limit', String(lim));
-    }
+    // sempre trazemos “muitos” para a tabela (e o gráfico corta localmente)
+    params.set('limit', String(Math.max(TABLE_LIMIT_HARD, Number(graphRange.value)||20)));
 
     const url = `${BASE}?${params.toString()}`;
     const res = await fetch(url, {
@@ -257,12 +296,14 @@ async function loadData(){
       return;
     }
 
-    const rows = await res.json();       // MAIS RECENTES → MAIS ANTIGOS
-    renderTable(rows);                   // tabela já quer nessa ordem
-    updateCharts(rows);                  // gráficos usam invertido internamente
-    setStatus(`Carregado: ${rows.length} registro(s).`);
+    lastRows = await res.json(); // ordem: mais recentes → mais antigos
 
-    return rows;
+    renderPanel(lastRows);
+    updateCharts(lastRows);
+    renderTable(lastRows);
+
+    setStatus(`Carregado: ${lastRows.length} registro(s).`);
+    return lastRows;
 
   } catch(e){
     console.error(e);
@@ -272,31 +313,41 @@ async function loadData(){
 }
 
 /*** Alternância de abas ***/
+function showPanel(){
+  tabPanelBtn.classList.add('active');
+  tabGraphsBtn.classList.remove('active');
+  tabTableBtn.classList.remove('active');
+  panelView.classList.remove('hidden');
+  graphsView.classList.add('hidden');
+  tableView.classList.add('hidden');
+}
 function showGraphs(){
   tabGraphsBtn.classList.add('active');
+  tabPanelBtn.classList.remove('active');
   tabTableBtn.classList.remove('active');
   graphsView.classList.remove('hidden');
+  panelView.classList.add('hidden');
   tableView.classList.add('hidden');
 }
 function showTable(){
   tabTableBtn.classList.add('active');
+  tabPanelBtn.classList.remove('active');
   tabGraphsBtn.classList.remove('active');
   tableView.classList.remove('hidden');
+  panelView.classList.add('hidden');
   graphsView.classList.add('hidden');
 }
 
 /*** Eventos ***/
+tabPanelBtn.addEventListener('click', showPanel);
 tabGraphsBtn.addEventListener('click', showGraphs);
 tabTableBtn.addEventListener('click', showTable);
 
 document.getElementById('refresh').addEventListener('click', loadData);
-graphRangeEl.addEventListener('change', loadData);
-tableLimitEl.addEventListener('change', loadData);
+graphRange.addEventListener('change', loadData);
 
-document.getElementById('download').addEventListener('click', async ()=>{
-  const rows = await loadData();
-  if (!rows) return;
-  const csv = asCSV(rows);
+document.getElementById('download').addEventListener('click', ()=>{
+  const csv = asCSV(lastRows || []);
   const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -304,7 +355,7 @@ document.getElementById('download').addEventListener('click', async ()=>{
   a.click();
 });
 
-/*** Debounce de resize (evita “piscadas” em alguns navegadores) ***/
+/*** Debounce de resize (evita “piscadas”) ***/
 let resizeTimer;
 window.addEventListener('resize', ()=>{
   clearTimeout(resizeTimer);
@@ -315,8 +366,8 @@ window.addEventListener('resize', ()=>{
 });
 
 /*** Inicialização ***/
-showGraphs();   // começa na aba de gráficos
-loadData();     // carrega já no início
+showPanel();   // começa no painel
+loadData();    // e já carrega
 </script>
 </body>
 </html>
