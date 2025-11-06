@@ -14,8 +14,8 @@
     input, select, button { padding:8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
     button { cursor:pointer; }
     .group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
-    @media (min-width:900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; } /* sempre 1 coluna */
+    canvas { width:100% !important; height:320px; }
 
     table { width:100%; border-collapse:collapse; margin-top:8px; }
     th, td { border:1px solid var(--line); padding:8px; text-align:left; }
@@ -272,3 +272,4 @@ updateAll();
 </script>
 </body>
 </html>
+
