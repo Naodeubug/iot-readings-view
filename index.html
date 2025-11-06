@@ -5,37 +5,40 @@
   <title>Leituras IoT — pública</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Chart.js -->
+  <!-- Chart.js (gráficos) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
-    :root { --space: 12px; --space2: 16px; --maxw: 1100px; }
+    :root { --space:12px; --space2:16px; --maxw:1100px; }
     * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #111; }
-    header { padding: 24px 12px 8px; }
-    h1 { margin: 0 0 6px 0; font-size: 26px; }
-    .muted { color:#666; font-size: 12px; }
+    body { font-family: Arial, Helvetica, sans-serif; margin:0; color:#111; background:#fff; }
+    header { padding:24px 12px 8px; }
+    h1 { margin:0 0 6px 0; font-size:26px; }
+    .muted { color:#666; font-size:12px; }
 
-    .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 12px 24px; overflow-x: hidden; }
+    .wrap { max-width:var(--maxw); margin:0 auto; padding:0 12px 24px; overflow-x:hidden; }
 
-    .bar { display:flex; gap:8px; align-items:center; flex-wrap: wrap; margin: 12px 0; }
-    input, select, button { padding:8px; font-size: 14px; }
-    #status { margin-left: 6px; }
+    .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+    input, select, button { padding:8px; font-size:14px; }
+    #status { margin-left:6px; }
 
-    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    .tabs { display:flex; gap:8px; margin:12px 0; }
+    .tabs button { padding:8px 12px; border:1px solid #ddd; background:#f7f7f7; border-radius:6px; cursor:pointer; }
+    .tabs button.active { background:#222; color:#fff; border-color:#222; }
+
+    /* Gráficos (empilhados e responsivos) */
+    .chartbox { border:1px solid #eee; border-radius:8px; padding:var(--space); background:#fafafa; margin:18px 0; }
+    .chartbox h3 { margin:0 0 8px 0; font-size:16px; }
+    .canvaswrap { position:relative; width:100%; height:320px; }
+    canvas { width:100% !important; height:100% !important; display:block; }
+
+    /* Tabela */
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
     th, td { border:1px solid #ddd; padding:8px; text-align:left; }
-    th { background:#222; color:#fff; position: sticky; top: 0; z-index: 1; }
+    th { background:#222; color:#fff; position:sticky; top:0; z-index:1; }
 
-    /* Área de gráficos */
-    .grid { display:grid; grid-template-columns: 1fr; gap: var(--space2); margin: 18px 0; }
-    /* Se quiser lado a lado em telas muito largas, habilite o @media abaixo */
-    @media (min-width: 1400px) {
-      .grid { grid-template-columns: 1fr 1fr; }
-    }
-    .chartbox { border:1px solid #eee; border-radius:8px; padding: var(--space); background:#fafafa; }
-    .chartbox h3 { margin: 0 0 8px 0; font-size:16px; }
-    .canvaswrap { position: relative; width: 100%; height: 320px; }
-    canvas { width: 100% !important; height: 100% !important; display: block; }
+    /* Esconde seção inativa */
+    .hidden { display:none; }
   </style>
 </head>
 <body>
@@ -45,83 +48,105 @@
   </header>
 
   <main class="wrap">
-    <!-- Controles -->
+    <!-- Controles gerais -->
     <div class="bar">
       <label for="device">Dispositivo:</label>
       <input id="device" placeholder="ex.: placa1" value="placa1" />
-      <label for="limit">Limite:</label>
-      <select id="limit">
-        <option>50</option>
-        <option selected>200</option>
-        <option>500</option>
-        <option>1000</option>
+      
+      <!-- Limite para a TABELA -->
+      <label for="tableLimit">Tabela:</label>
+      <select id="tableLimit">
+        <option value="100">100</option>
+        <option value="500">500</option>
+        <option value="1000" selected>1000</option>
+        <option value="all">Todos</option>
       </select>
+
+      <!-- Faixa para os GRÁFICOS -->
+      <label for="graphRange">Gráfico (últimos):</label>
+      <select id="graphRange">
+        <option value="20" selected>20</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+        <option value="120">120</option>
+      </select>
+
       <button id="refresh">Atualizar</button>
       <button id="download">Baixar CSV</button>
       <span id="status" class="muted"></span>
     </div>
 
-    <!-- Gráficos -->
-    <section class="grid">
+    <!-- Abas de visualização -->
+    <div class="tabs">
+      <button id="tabGraphs" class="active">Ver gráficos</button>
+      <button id="tabTable">Ver tabela</button>
+    </div>
+
+    <!-- Seção: Gráficos -->
+    <section id="view-graphs">
       <div class="chartbox">
         <h3>Temperatura (°C)</h3>
         <div class="canvaswrap"><canvas id="tempChart"></canvas></div>
       </div>
-
       <div class="chartbox">
         <h3>Umidade (%)</h3>
         <div class="canvaswrap"><canvas id="humChart"></canvas></div>
       </div>
     </section>
 
-    <!-- Tabela -->
-    <table id="tbl">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Device</th>
-          <th>TS (local do navegador)</th>
-          <th>Temp (°C)</th>
-          <th>Umidade (%)</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <!-- Seção: Tabela -->
+    <section id="view-table" class="hidden">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Device</th>
+            <th>TS (local do navegador)</th>
+            <th>Temp (°C)</th>
+            <th>Umidade (%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
   </main>
 
 <script>
-/*** >>> SUBSTITUA AQUI PELOS SEUS VALORES <<< ***/
 const SUPA_URL = 'https://hafzqoedrlllilclmooo.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZnpxb2VkcmxsbGlsY2xtb29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNTgxNDYsImV4cCI6MjA3NzczNDE0Nn0.h00s3ujCRrHivvAiDBFhte5ISGitHd0JE5lDaMuo50E';
 
 /*** Configurações ***/
-const VIEW_NAME = 'readings_public';  // view com ts_local
+const VIEW_NAME = 'readings_public';          // view com ts_local ajustado
 const BASE = `${SUPA_URL}/rest/v1/${VIEW_NAME}`;
-const MAX_POINTS = 200;               // pontos no gráfico (corte para mobile)
 
 /*** DOM ***/
-const statusEl = document.getElementById('status');
-const deviceEl = document.getElementById('device');
-const limitEl  = document.getElementById('limit');
-const tbody    = document.querySelector('#tbl tbody');
+const statusEl     = document.getElementById('status');
+const deviceEl     = document.getElementById('device');
+const tableLimitEl = document.getElementById('tableLimit');
+const graphRangeEl = document.getElementById('graphRange');
+const tbody        = document.querySelector('#tbl tbody');
+
+const tabGraphsBtn = document.getElementById('tabGraphs');
+const tabTableBtn  = document.getElementById('tabTable');
+const graphsView   = document.getElementById('view-graphs');
+const tableView    = document.getElementById('view-table');
 
 /*** Utils ***/
 function setStatus(msg){ statusEl.textContent = msg; }
-
+function escCSV(v){ return v==null ? '' : String(v).replaceAll('"','""'); }
 function asCSV(rows){
   if(!rows.length) return '';
   const cols = Object.keys(rows[0]);
-  const esc = v => (v==null ? '' : String(v).replaceAll('"','""'));
-  const head = cols.map(c=>`"${esc(c)}"`).join(',');
-  const body = rows.map(r => cols.map(c=>`"${esc(r[c])}"`).join(',')).join('\n');
+  const head = cols.map(c=>`"${escCSV(c)}"`).join(',');
+  const body = rows.map(r => cols.map(c=>`"${escCSV(r[c])}"`).join(',')).join('\n');
   return head + '\n' + body;
 }
 
 /*** Charts ***/
 let tempChart, humChart;
 
-function makeLineChart(ctx, ylabel, labels, series){
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5); // menos memória
+function makeLineChart(ctx, color, labels, series, ylabel){
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);  // menos memória
 
   return new Chart(ctx, {
     type: 'line',
@@ -130,50 +155,52 @@ function makeLineChart(ctx, ylabel, labels, series){
       datasets: [{
         label: ylabel,
         data: series,
+        borderColor: color,
+        backgroundColor: 'transparent',
         borderWidth: 2,
         pointRadius: 0,
-        tension: 0.25
+        tension: 0.25,
+        spanGaps: true
       }]
     },
     options: {
       responsive: true,
-      maintainAspectRatio: false, // respeita altura do contêiner
+      maintainAspectRatio: false,
       animation: false,
-      interaction: { mode:'nearest', intersect:false },
       parsing: false,
       normalized: true,
       devicePixelRatio: dpr,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { display:false } },
+      interaction: { mode:'nearest', intersect:false },
       scales: {
-        x: { ticks: { maxRotation: 0, autoSkip: true } },
-        y: { beginAtZero: false }
+        x: { ticks: { maxRotation:0, autoSkip:true } },
+        y: { beginAtZero:false }
       }
     }
   });
 }
 
 function updateCharts(rows){
-  // rows chegam do mais recente para o mais antigo — vamos inverter
-  const labels = rows.map(r => r.ts_local ? new Date(r.ts_local).toLocaleString() : '').reverse();
-  const temps  = rows.map(r => r.temperature_c).reverse();
-  const hums   = rows.map(r => r.humidity_pct).reverse();
+  // rows chegam do mais recente para o mais antigo ⇒ vamos inverter para desenhar
+  const inv = [...rows].reverse();
 
-  // corta para não sobrecarregar
-  const cut = Math.max(0, labels.length - MAX_POINTS);
-  if (cut > 0) {
-    labels.splice(0, cut);
-    temps.splice(0, cut);
-    hums.splice(0, cut);
-  }
+  const labels = inv.map(r => r.ts_local ? new Date(r.ts_local).toLocaleString() : '');
+  const temps  = inv.map(r => r.temperature_c);
+  const hums   = inv.map(r => r.humidity_pct);
+
+  // faixa pedida p/ gráfico
+  const keep = Math.max(1, Number(graphRangeEl.value) || 20);
+  const l = Math.max(0, labels.length - keep);
+  const L = labels.slice(l), T = temps.slice(l), H = hums.slice(l);
 
   const ctxT = document.getElementById('tempChart').getContext('2d');
   const ctxH = document.getElementById('humChart').getContext('2d');
 
-  if (!tempChart) tempChart = makeLineChart(ctxT, 'Temperatura (°C)', labels, temps);
-  else { tempChart.data.labels = labels; tempChart.data.datasets[0].data = temps; tempChart.update('none'); }
+  if (!tempChart) tempChart = makeLineChart(ctxT, '#2563eb', L, T, 'Temperatura (°C)');
+  else { tempChart.data.labels = L; tempChart.data.datasets[0].data = T; tempChart.update('none'); }
 
-  if (!humChart) humChart = makeLineChart(ctxH, 'Umidade (%)', labels, hums);
-  else { humChart.data.labels = labels; humChart.data.datasets[0].data = hums; humChart.update('none'); }
+  if (!humChart) humChart = makeLineChart(ctxH, '#059669', L, H, 'Umidade (%)');
+  else { humChart.data.labels = L; humChart.data.datasets[0].data = H; humChart.update('none'); }
 }
 
 /*** Tabela ***/
@@ -192,63 +219,92 @@ function renderTable(rows){
   });
 }
 
-/*** Data loader ***/
+/*** Data loader (busca uma vez e atualiza gráficos/tabela de acordo com os selects) ***/
 async function loadData(){
   try{
     setStatus('Carregando...');
+
     const params = new URLSearchParams();
     params.set('select','id,device_id,ts_local,temperature_c,humidity_pct');
-
-    const device = deviceEl.value.trim();
-    if (device) params.set('device_id','eq.'+device);
-
     params.set('order','ts_local.desc');
-    params.set('limit', limitEl.value);
+
+    const dev = deviceEl.value.trim();
+    if (dev) params.set('device_id', 'eq.' + dev);
+
+    // Qual limite pedir para a API?
+    // - se tabela = "Todos", não envia limit (deixa o default do PostgREST)
+    // - senão, usa o maior entre limite da tabela e da faixa do gráfico
+    const tableLim = tableLimitEl.value;
+    const gKeep    = Number(graphRangeEl.value) || 20;
+    if (tableLim !== 'all') {
+      const lim = Math.max(Number(tableLim) || 1000, gKeep);
+      params.set('limit', String(lim));
+    }
 
     const url = `${BASE}?${params.toString()}`;
     const res = await fetch(url, {
       headers: {
-        'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + ANON_KEY,
-        'Accept': 'application/json'
+        apikey: ANON_KEY,
+        Authorization: 'Bearer ' + ANON_KEY,
+        Accept: 'application/json'
       },
-      // evita cache agressivo de alguns proxies/CDNs
       cache: 'no-store'
     });
 
-    if (!res.ok){
+    if (!res.ok) {
       setStatus(`Erro ${res.status}`);
-      alert(`Erro ${res.status} ao buscar dados`);
+      alert(`Erro ${res.status} ao buscar dados.`);
       return;
     }
 
-    const rows = await res.json();
-    renderTable(rows);
-    updateCharts(rows);
+    const rows = await res.json();       // MAIS RECENTES → MAIS ANTIGOS
+    renderTable(rows);                   // tabela já quer nessa ordem
+    updateCharts(rows);                  // gráficos usam invertido internamente
     setStatus(`Carregado: ${rows.length} registro(s).`);
+
     return rows;
 
-  } catch(err){
-    console.error(err);
+  } catch(e){
+    console.error(e);
     setStatus('Erro ao carregar');
     alert('Falha ao carregar os dados.');
   }
 }
 
+/*** Alternância de abas ***/
+function showGraphs(){
+  tabGraphsBtn.classList.add('active');
+  tabTableBtn.classList.remove('active');
+  graphsView.classList.remove('hidden');
+  tableView.classList.add('hidden');
+}
+function showTable(){
+  tabTableBtn.classList.add('active');
+  tabGraphsBtn.classList.remove('active');
+  tableView.classList.remove('hidden');
+  graphsView.classList.add('hidden');
+}
+
 /*** Eventos ***/
+tabGraphsBtn.addEventListener('click', showGraphs);
+tabTableBtn.addEventListener('click', showTable);
+
 document.getElementById('refresh').addEventListener('click', loadData);
+graphRangeEl.addEventListener('change', loadData);
+tableLimitEl.addEventListener('change', loadData);
+
 document.getElementById('download').addEventListener('click', async ()=>{
   const rows = await loadData();
-  if(!rows) return;
+  if (!rows) return;
   const csv = asCSV(rows);
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'leituras.csv';
   a.click();
 });
 
-/*** Debounce de resize (evita flicker em alguns Firefox) ***/
+/*** Debounce de resize (evita “piscadas” em alguns navegadores) ***/
 let resizeTimer;
 window.addEventListener('resize', ()=>{
   clearTimeout(resizeTimer);
@@ -259,7 +315,8 @@ window.addEventListener('resize', ()=>{
 });
 
 /*** Inicialização ***/
-loadData();
+showGraphs();   // começa na aba de gráficos
+loadData();     // carrega já no início
 </script>
 </body>
 </html>
