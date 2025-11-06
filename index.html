@@ -67,6 +67,10 @@
       </select>
       <button id="refresh">Atualizar</button>
       <button id="download">Baixar CSV</button>
+      <label style="margin-left:8px;">
+        <input type="checkbox" id="autoRefresh" checked>
+        Auto (1 min)
+      </label>
       <span id="status" class="muted"></span>
     </div>
 
@@ -131,6 +135,10 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const VIEW_NAME = 'readings_public';
 const BASE = `${SUPA_URL}/rest/v1/${VIEW_NAME}`;
 const TABLE_LIMIT_HARD = 20000; // “Todos”: traz muito; ajuste se quiser
+/*** Auto-refresh ***/
+const AUTO_REFRESH_MS = 60_000; // 1 minuto
+let autoTimer = null;
+let inFlight = false;           // evita duas requisições simultâneas
 
 /*** DOM ***/
 const statusEl   = document.getElementById('status');
@@ -149,6 +157,8 @@ const tableView  = document.getElementById('view-table');
 const pTime = document.getElementById('p-time');
 const pTemp = document.getElementById('p-temp');
 const pHum  = document.getElementById('p-hum');
+  
+const autoEl = document.getElementById('autoRefresh');
 
 /*** Utils ***/
 const setStatus = msg => statusEl.textContent = msg;
@@ -265,7 +275,6 @@ function renderPanel(rows){
 
 /*** Data loader ***/
 let lastRows = [];
-
 const PAGE_SIZE = 1000; // limite do Supabase por request
 
 async function fetchAllRows(paramsStr){
@@ -296,6 +305,9 @@ async function fetchAllRows(paramsStr){
 
 async function loadData(){
   try{
+    if (inFlight) return;
+    inFlight = true;
+    
     setStatus('Carregando...');
 
     const params = new URLSearchParams();
@@ -315,10 +327,12 @@ async function loadData(){
     renderTable(lastRows);    // tabela agora tem TODOS os registros buscados
 
     setStatus(`Carregado: ${lastRows.length} registro(s).`);
+    inFlight = false;
     return lastRows;
 
   } catch(e){
     console.error(e);
+    inFlight = false;
     setStatus('Erro ao carregar');
     alert('Falha ao carregar os dados: ' + e.message);
   }
@@ -350,6 +364,18 @@ function showTable(){
   graphsView.classList.add('hidden');
 }
 
+function startAuto(){
+  stopAuto();
+  autoTimer = setInterval(() => {
+    // só atualiza se a aba estiver visível (economiza rede/bateria)
+    if (!document.hidden) loadData();
+  }, AUTO_REFRESH_MS);
+}
+
+function stopAuto(){
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+}
+
 /*** Eventos ***/
 tabPanelBtn.addEventListener('click', showPanel);
 tabGraphsBtn.addEventListener('click', showGraphs);
@@ -357,6 +383,26 @@ tabTableBtn.addEventListener('click', showTable);
 
 document.getElementById('refresh').addEventListener('click', loadData);
 graphRange.addEventListener('change', loadData);
+
+// liga/desliga auto-refresh
+autoEl.addEventListener('change', () => {
+  if (autoEl.checked) {
+    loadData();   // puxa imediatamente ao ligar
+    startAuto();
+  } else {
+    stopAuto();
+  }
+});
+
+// pausa quando a aba perde foco, retoma ao voltar
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopAuto();
+  } else if (autoEl.checked) {
+    loadData();
+    startAuto();
+  }
+});
 
 document.getElementById('download').addEventListener('click', ()=>{
   const csv = asCSV(lastRows || []);
@@ -380,7 +426,9 @@ window.addEventListener('resize', ()=>{
 /*** Inicialização ***/
 showPanel();   // começa no painel
 loadData();    // e já carrega
+if (autoEl.checked) startAuto();
 </script>
 </body>
 </html>
+
 
