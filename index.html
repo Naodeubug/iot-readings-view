@@ -1,84 +1,138 @@
 <!doctype html>
-<html>
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Leituras IoT — pública</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    h1 { margin-bottom: 8px; }
-    .bar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap: wrap; }
-    input, select, button { padding:8px; }
-    table { border-collapse: collapse; width:100%; margin-top:8px; }
-    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
-    th { background:#222; color:#fff; position: sticky; top: 0; }
-    .muted { color:#666; font-size: 12px; }
+    :root { --bg:#fff; --fg:#111; --muted:#666; --line:#e5e5e5; }
+    html,body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .wrap { max-width:1100px; margin:24px auto; padding:0 16px; }
+    h1 { margin:0 0 4px; }
+    .muted { color:var(--muted); font-size:12px; }
+    .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0 16px; }
+    input, select, button { padding:8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+    button { cursor:pointer; }
+    .group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media (min-width:900px){ .grid { grid-template-columns: 1fr 1fr; } }
+
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { border:1px solid var(--line); padding:8px; text-align:left; }
+    th { background:#222; color:#fff; position:sticky; top:0; z-index:1; }
+    .hidden { display:none; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <h1>Leituras IoT</h1>
-  <div class="muted">Fonte: Supabase REST (RLS + anon key)</div>
+  <div class="wrap">
+    <h1>Leituras IoT</h1>
+    <div class="muted">Fonte: Supabase REST (RLS + anon key) — view <code>readings_public</code></div>
 
-  <div class="bar">
-    <label>Dispositivo:</label>
-    <input id="device" placeholder="ex.: placa1" value="placa1">
-    <label>Limite:</label>
-    <select id="limit">
-      <option>50</option><option selected>200</option><option>500</option><option>1000</option>
-    </select>
-    <button id="refresh">Atualizar</button>
-    <button id="download">Baixar CSV</button>
-    <span id="status" class="muted"></span>
+    <div class="bar">
+      <div class="group">
+        <label for="device">Dispositivo:</label>
+        <input id="device" placeholder="ex.: placa1" value="placa1" />
+      </div>
+
+      <div class="group">
+        <label for="points">Pontos:</label>
+        <select id="points">
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+          <option value="60">60</option>
+          <option value="120">120</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <button id="btn-refresh">Atualizar</button>
+        <button id="btn-toggle">Ver Tabela</button>
+        <button id="btn-csv">Baixar CSV</button>
+      </div>
+
+      <div class="group">
+        <label><input type="checkbox" id="auto" /> Auto-refresh (60 s)</label>
+      </div>
+
+      <span id="status" class="muted"></span>
+    </div>
+
+    <!-- GRÁFICOS -->
+    <div id="charts">
+      <div class="grid">
+        <canvas id="chartTemp" height="220"></canvas>
+        <canvas id="chartHum" height="220"></canvas>
+      </div>
+    </div>
+
+    <!-- TABELA -->
+    <div id="tableWrap" class="hidden">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Device</th>
+            <th>TS (local do navegador)</th>
+            <th>Temp (°C)</th>
+            <th>Umidade (%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
-  <table id="tbl">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Device</th>
-        <th>TS (local do navegador)</th>
-        <th>Temp (°C)</th>
-        <th>Umidade (%)</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
 <script>
-/*** >>> SUBSTITUA AQUI <<< ***/
-const SUPA_URL = 'https://hafzqoedrlllilclmooo.supabase.co';     // ex.: https://hafzqoedrlllliclm0oo.supabase.co
+/*** CONFIG — use os seus valores funcionando ***/
+const SUPA_URL = 'https://hafzqoedrlllilclmooo.supabase.co';  // <-- troque se precisar
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZnpxb2VkcmxsbGlsY2xtb29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNTgxNDYsImV4cCI6MjA3NzczNDE0Nn0.h00s3ujCRrHivvAiDBFhte5ISGitHd0JE5lDaMuo50E';                        // anon key
 
-// Endpoint: usamos a VIEW 'readings_public' (já com tz de SP em ts_local).
-const BASE = SUPA_URL + '/rest/v1/readings_public';
+const VIEW = '/rest/v1/readings_public'; // id, device_id, ts_local, temperature_c, humidity_pct
 
-const statusEl = document.getElementById('status');
-const deviceEl = document.getElementById('device');
-const limitEl  = document.getElementById('limit');
+const el = (sel) => document.querySelector(sel);
+const statusEl = el('#status');
+const deviceEl = el('#device');
+const pointsEl = el('#points');
+const tblBody = el('#tbl tbody');
+const chartsBox = el('#charts');
+const tableBox  = el('#tableWrap');
+let autoTimer = null;
+
+// Chart.js instances (para destruir/recriar)
+let chartTemp = null;
+let chartHum  = null;
 
 function setStatus(msg){ statusEl.textContent = msg; }
 
-function asCSV(rows){
+function fmtTime(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  // Mostra só hora:min:seg (ou mude para toLocaleString se quiser data completa)
+  return d.toLocaleString(); // pode trocar para .toLocaleTimeString()
+}
+
+function toCSV(rows){
   if(!rows.length) return '';
-  const cols = Object.keys(rows[0]);
-  const esc = v => (v==null?'':String(v).replaceAll('"','""'));
+  const cols = ['id','device_id','ts_local','temperature_c','humidity_pct'];
+  const esc = (v)=> (v==null?'':String(v).replaceAll('"','""'));
   const head = cols.map(c=>`"${esc(c)}"`).join(',');
   const body = rows.map(r => cols.map(c=>`"${esc(r[c])}"`).join(',')).join('\n');
   return head + '\n' + body;
 }
 
-async function loadData(){
+async function fetchRows(){
   setStatus('Carregando...');
   const params = new URLSearchParams();
   params.set('select','id,device_id,ts_local,temperature_c,humidity_pct');
 
-  const device = deviceEl.value.trim();
-  if(device) params.set('device_id','eq.'+device); // filtro opcional
+  const dev = deviceEl.value.trim();
+  if (dev) params.set('device_id','eq.'+dev);
 
   params.set('order','ts_local.desc');
-  params.set('limit', limitEl.value);
+  params.set('limit', pointsEl.value);
 
-  const url = BASE + '?' + params.toString();
+  const url = `${SUPA_URL}${VIEW}?${params.toString()}`;
   const res = await fetch(url, {
     headers: {
       'apikey': ANON_KEY,
@@ -88,45 +142,133 @@ async function loadData(){
   });
 
   if(!res.ok){
-    setStatus('Erro: ' + res.status);
-    alert('Erro ' + res.status + ' ao buscar dados');
-    return;
+    setStatus(`Erro ${res.status}`);
+    throw new Error('HTTP '+res.status);
   }
 
+  // recebemos desc; para gráficos fica melhor em ordem crescente
   const rows = await res.json();
-  const tbody = document.querySelector('#tbl tbody');
-  tbody.innerHTML = '';
-
-  rows.forEach(r=>{
-    const tr = document.createElement('tr');
-    const when = r.ts_local ? new Date(r.ts_local).toLocaleString() : '';
-    tr.innerHTML = `
-      <td>${r.id ?? ''}</td>
-      <td>${r.device_id ?? ''}</td>
-      <td>${when}</td>
-      <td>${r.temperature_c ?? ''}</td>
-      <td>${r.humidity_pct ?? ''}</td>`;
-    tbody.appendChild(tr);
-  });
-
+  rows.reverse();
   setStatus(`Carregado: ${rows.length} registro(s).`);
   return rows;
 }
 
-document.getElementById('refresh').addEventListener('click', loadData);
-document.getElementById('download').addEventListener('click', async ()=>{
-  const rows = await loadData();
-  if(!rows) return;
-  const csv = asCSV(rows);
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'leituras.csv';
-  a.click();
+function renderTable(rows){
+  tblBody.innerHTML = '';
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.id ?? ''}</td>
+      <td>${r.device_id ?? ''}</td>
+      <td>${fmtTime(r.ts_local)}</td>
+      <td>${r.temperature_c ?? ''}</td>
+      <td>${r.humidity_pct ?? ''}</td>`;
+    tblBody.appendChild(tr);
+  });
+}
+
+function buildLineChart(ctx, label, labels, data, unit){
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label,
+        data,
+        tension: 0.25,
+        fill: false,
+        borderWidth: 2,
+        pointRadius: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { autoSkip: true, maxTicksLimit: 6 } },
+        y: {
+          beginAtZero: false,
+          title: { display: true, text: unit }
+        }
+      },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: (ctx)=> `${ctx.parsed.y} ${unit}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderCharts(rows){
+  const labels = rows.map(r => fmtTime(r.ts_local));
+  const temps  = rows.map(r => r.temperature_c);
+  const hums   = rows.map(r => r.humidity_pct);
+
+  // destrói anteriores (evita grafos sobrepostos)
+  if (chartTemp) chartTemp.destroy();
+  if (chartHum)  chartHum.destroy();
+
+  chartTemp = buildLineChart(el('#chartTemp'), 'Temperatura (°C)', labels, temps, '°C');
+  chartHum  = buildLineChart(el('#chartHum'),  'Umidade (%)',     labels, hums,  '%');
+}
+
+async function updateAll(){
+  try{
+    const rows = await fetchRows();
+    if (!tableBox.classList.contains('hidden')) {
+      renderTable(rows);
+    } else {
+      renderCharts(rows);
+    }
+  } catch(e){
+    console.error(e);
+  }
+}
+
+/*** Eventos ***/
+el('#btn-refresh').addEventListener('click', updateAll);
+el('#btn-toggle').addEventListener('click', ()=>{
+  // alterna visualização
+  const showingCharts = tableBox.classList.contains('hidden');
+  if (showingCharts) {
+    chartsBox.classList.add('hidden');
+    tableBox.classList.remove('hidden');
+    el('#btn-toggle').textContent = 'Ver Gráficos';
+  } else {
+    tableBox.classList.add('hidden');
+    chartsBox.classList.remove('hidden');
+    el('#btn-toggle').textContent = 'Ver Tabela';
+  }
+  updateAll();
 });
 
-loadData();
+el('#btn-csv').addEventListener('click', async ()=>{
+  try{
+    const rows = await fetchRows();
+    const csv = toCSV(rows);
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `leituras_${deviceEl.value || 'all'}.csv`;
+    a.click();
+  }catch(e){ console.error(e); }
+});
+
+el('#auto').addEventListener('change', (ev)=>{
+  if (ev.target.checked){
+    autoTimer = setInterval(updateAll, 60_000);
+  } else {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+});
+
+// primeira carga
+updateAll();
 </script>
 </body>
 </html>
-
