@@ -266,6 +266,34 @@ function renderPanel(rows){
 /*** Data loader ***/
 let lastRows = [];
 
+const PAGE_SIZE = 1000; // limite do Supabase por request
+
+async function fetchAllRows(paramsStr){
+  const urlBase = `${BASE}?${paramsStr}`;
+  let offset = 0;
+  const all = [];
+
+  while (true) {
+    const res = await fetch(urlBase, {
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: 'Bearer ' + ANON_KEY,
+        Accept: 'application/json',
+        Range: `${offset}-${offset + PAGE_SIZE - 1}` // paginação real
+      },
+      cache: 'no-store'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const chunk = await res.json();
+    all.push(...chunk);
+
+    if (chunk.length < PAGE_SIZE) break; // chegou no fim
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
 async function loadData(){
   try{
     setStatus('Carregando...');
@@ -277,30 +305,14 @@ async function loadData(){
     const dev = deviceEl.value.trim();
     if (dev) params.set('device_id','eq.' + dev);
 
-    // sempre trazemos “muitos” para a tabela (e o gráfico corta localmente)
-    params.set('limit', String(Math.max(TABLE_LIMIT_HARD, Number(graphRange.value)||20)));
+    // NÃO usamos ?limit= — vamos buscar todas as páginas
+    const rows = await fetchAllRows(params.toString());
 
-    const url = `${BASE}?${params.toString()}`;
-    const res = await fetch(url, {
-      headers: {
-        apikey: ANON_KEY,
-        Authorization: 'Bearer ' + ANON_KEY,
-        Accept: 'application/json'
-      },
-      cache: 'no-store'
-    });
-
-    if (!res.ok) {
-      setStatus(`Erro ${res.status}`);
-      alert(`Erro ${res.status} ao buscar dados.`);
-      return;
-    }
-
-    lastRows = await res.json(); // ordem: mais recentes → mais antigos
+    lastRows = rows; // ordem: mais recentes → mais antigos
 
     renderPanel(lastRows);
-    updateCharts(lastRows);
-    renderTable(lastRows);
+    updateCharts(lastRows);   // o gráfico já corta pelos "últimos 20/30/60/120"
+    renderTable(lastRows);    // tabela agora tem TODOS os registros buscados
 
     setStatus(`Carregado: ${lastRows.length} registro(s).`);
     return lastRows;
@@ -308,7 +320,7 @@ async function loadData(){
   } catch(e){
     console.error(e);
     setStatus('Erro ao carregar');
-    alert('Falha ao carregar os dados.');
+    alert('Falha ao carregar os dados: ' + e.message);
   }
 }
 
@@ -371,3 +383,4 @@ loadData();    // e já carrega
 </script>
 </body>
 </html>
+
